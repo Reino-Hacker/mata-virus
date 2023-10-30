@@ -1,11 +1,9 @@
 #!/bin/bash
 
-
 clear
 
-
 function apresenta_banner() {
-        echo "        v_0.2"
+        echo "        v_0.3"
 	echo -e "\033[0;31m──▄────▄▄▄▄▄▄▄────▄───"
 	echo -e "\033[0;31m─▀▀▄─▄█████████▄─▄▀▀──"
 	echo -e "\033[0;31m─────██─▀███▀─██──────"
@@ -24,8 +22,8 @@ function apresenta_banner() {
 	sleep 1
 }
 
+# Função para verificar execução como root
 function permissao_root(){
-	# Pergunta ao usuário se deseja executar como root
 	echo -e "\033[1;31mAtenção: Essa ferramenta exige privilégios de root"
 
 	# Verifica root
@@ -40,14 +38,18 @@ function permissao_root(){
 	fi
 }
 
-
+# Função para verificar se o ClamAV está instalado
 function check_clamscan() {
+
     if ! command -v clamscan &>/dev/null; then
         read -p "ClamAV não está instalado. Pressione (enter) para instalar ou (ctrl+c) para sair."
+        apresenta_banner
         apt install clamav -y
+        clear
     fi
 }
 
+# Função para atualizar a base de dados do ClamAV
 function update_clamav_database() {
     echo -e "\033[0;32m[+] Atualizando banco de dados do ClamAV...\033[0m"
     freshclam
@@ -56,6 +58,7 @@ function update_clamav_database() {
     clear
 }
 
+# Função para exibir que a verificação por clamav está em progresso
 function update_progress() {
     local progress=0
     local pontos=""
@@ -74,37 +77,38 @@ function update_progress() {
     done
 }
 
+# Função para verificar um arquivo com clamav
 function scan_file() {
     read -p "Especifique o caminho completo para o arquivo: " caminho_arquivo
     update_progress &
-        progress_pid=$!
+    progress_pid=$!
 
-        resultado=$(clamscan --bell "$caminho_arquivo")
+    resultado=$(clamscan --bell "$caminho_arquivo")
 
-        kill "$progress_pid"  # Parar o contador de progresso
-        clear
+    kill "$progress_pid"  # Parar o contador de progresso
+    clear
         
-        apresenta_banner
+    apresenta_banner
 
-        if echo "$resultado" | grep -q "Infected files: 1"; then
-            read -p "O arquivo está infectado. Deseja excluí-lo? (S/N): " resposta
-            if [ "$resposta" = "S" ] || [ "$resposta" = "s" ]; then
-                rm -f "$caminho_arquivo"
-                echo "O arquivo foi excluído."
-            else
-                echo "O arquivo não foi excluído."
-            fi
+    if echo "$resultado" | grep -q "Infected files: 1"; then
+        read -p "O arquivo está infectado. Deseja excluí-lo? (S/N): " resposta
+        if [ "$resposta" = "S" ] || [ "$resposta" = "s" ]; then
+            rm -f "$caminho_arquivo"
+            echo "O arquivo foi excluído."
         else
-            echo "O arquivo não está infectado."
+            echo "O arquivo não foi excluído."
+        fi
+    else
+        echo "O arquivo não está infectado."
 
-	    # Aguarda o usuário pressionar Enter para concluir
-	    echo -e "\033[1;33m"
-	    read -p "Pressione Enter para concluir..."
-
-            clear
-	fi
+	# Aguarda o usuário pressionar Enter para concluir
+	echo -e "\033[1;33m"
+	read -p "Pressione Enter para concluir..."
+        clear
+    fi
 }
 
+# Função para verificar um diretório com clamav
 function scan_directory() {
     read -p "Especifique o diretório: " diretorio
     if [ ! -d "$diretorio" ]; then
@@ -139,6 +143,7 @@ function scan_directory() {
     fi
 }
 
+# Função para verificar todo sistema com clamav
 function scan_system() {
     echo "Iniciando a verificação de todo o sistema..."
         update_progress &
@@ -155,14 +160,9 @@ function scan_system() {
         clear
 }
 
+# Função para verificar portas abertas
 function check_ports(){
 	#!/bin/bash
-
-	# Verifica se o usuário é root (necessário para utilizar o nmap)
-	if [[ $EUID -ne 0 ]]; then
-	    echo "Esse recurso precisa ser executado como root."
-	    exit 1
-	fi
 
 	# Verifica se o nmap está instalado e instala se não estiver
 	if ! command -v nmap &> /dev/null; then
@@ -179,10 +179,40 @@ function check_ports(){
 	echo -e "\033[1;33m"
 	read -p "Pressione Enter para concluir..."
 	clear
-
-
 }
 
+# Função verificar se o RKHUNTER está instalado
+function check_rkhunter() {
+    
+    if ! command -v rkhunter &>/dev/null; then
+        apresenta_banner
+        read -p "rkhunter não está instalado. Pressione (enter) para instalar ou (ctrl+c) para sair."
+        apt install rkhunter -y
+        clear
+    fi
+}
+
+# Função para passar a varredura com rkhunter
+function scan_rootkits() {
+    echo -e "Iniciando varredura por rootkits...\033[0;32m"
+    rkhunter -c --sk --rwo > /tmp/rkhunter_output.txt  # Redireciona a saída para um arquivo temporário
+    echo -e "\033[1;33m"
+
+    # Verifica se há atividades suspeitas no arquivo de saída
+    if grep -qE "Warning: Suspicious file|Warning: Hidden process" /tmp/rkhunter_output.txt; then
+        echo -e "\033[0;31mAtividades Suspeitas Encontradas:\033[0m"
+        cat /tmp/rkhunter_output.txt
+    else
+        echo "Nenhuma atividade suspeita encontrada."
+    fi
+
+    rm /tmp/rkhunter_output.txt  # Remove o arquivo temporário
+    echo -e "\033[1;33m"
+    read -p "Pressione Enter para concluir..."
+    clear
+}
+
+# Função para apresentar as opções
 function main_menu() {
     while true; do
     	echo -e "\033[H"
@@ -191,8 +221,9 @@ function main_menu() {
         echo "1- Escanear arquivo"
         echo "2- Escanear diretório"
         echo "3- Escanear todo o sistema"
-        echo "4- Checar Portas Abertas"
-        echo "5- Sair"
+        echo "4- Verificar Rootkits"
+        echo "5- Checar Portas Abertas"
+        echo "6- Sair"
         read -p "Digite o número correspondente ao método desejado: " method
         echo ""
 
@@ -200,8 +231,9 @@ function main_menu() {
             1) scan_file ;;
             2) scan_directory ;;
             3) scan_system ;;
-            4) check_ports ;;
-            5) echo "Saindo..." && exit 0 ;;
+            4) scan_rootkits ;;
+            5) check_ports ;;
+            6) echo "Saindo..." && exit 0 ;;
             *) echo "Opção inválida. Tente novamente." ;;
         esac
     done
@@ -213,6 +245,7 @@ function main() {
     permissao_root
     check_clamscan
     update_clamav_database
+    check_rkhunter
     main_menu
 }
 
